@@ -8,15 +8,11 @@ const areaSchema = new mongoose.Schema({
         trim: true,
         maxLength: 50
     },
-    isUsed: {
-        type: Boolean,
-        default: true
-    },
-    createdByEmail: {
+    creatorEmail: {
         type: String,
         trim: true
     },
-    createdByName: {
+    creatorName: {
         type: String,
         trim: true
     },

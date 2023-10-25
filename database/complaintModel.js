@@ -48,7 +48,7 @@ const complaintSchema = new mongoose.Schema({
     status: {
         type: String,
         required: true,
-        enum: ['Received', 'Has been cancelled', 'Still in progress', 'Has been solved'],
+        enum: ['Received', 'Cancelled', 'Solved'],
         default: 'Received'
     },
     complaintHandlerEmail: {

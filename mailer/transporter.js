@@ -1,10 +1,12 @@
 const nodemailer = require('nodemailer');
 
+require('dotenv').config();
+
 const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
+    host: process.env.MAILER_HOST,
     auth: {
-        user: 'chankhaishen36@gmail.com',       // This supposed to be the city council's email, e.g. noreply@citycouncil.com
-        pass: 'etpfihhiguxyzqlc'
+        user: process.env.MAILER_USER,       // This supposed to be the city council's email, e.g. noreply@citycouncil.com
+        pass: process.env.MAILER_PASS
     }
 });
 

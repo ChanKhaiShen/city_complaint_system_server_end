@@ -1,10 +1,20 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = '9d8fjek0zlsdni4232dnxi90138dcx';
+require('dotenv').config();
+
 const verifyToken = (req, res, next) => {
-    var token = req.headers['authorization'];
-    console.log('verifyToken', token);
-    token = token.split(' ')[1];
+    var authorization = req.headers['authorization'];
+    console.log('verifyToken', authorization);
+
+    if (authorization === undefined) {
+        console.log('verifyToken: Authorization header is empty')
+        res.status(401).json({
+            message: "Authorization header is empty"
+        });
+        return;
+    }
+
+    token = authorization.split(' ')[1];
     console.log('verifyToken', token);
 
     if (token === undefined) {
@@ -15,7 +25,7 @@ const verifyToken = (req, res, next) => {
         return;
     }
 
-    jwt.verify(token, JWT_SECRET, (error, decoded) => {
+    jwt.verify(token, process.env.JWT_SECRET, (error, decoded) => {
         if (error != null) {
             console.log('verifyToken: Fail to authenticate', error);
             res.status(401).json({

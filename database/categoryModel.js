@@ -8,15 +8,11 @@ const categorySchema = new mongoose.Schema({
         maxLength: 50,
         unique: true,
     },
-    isUsed: {
-        type: Boolean,
-        default: true
-    },
-    createdByEmail: {
+    creatorEmail: {
         type: String,
         trim: true
     },
-    createdByName: {
+    creatorName: {
         type: String,
         trim: true
     },

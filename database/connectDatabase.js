@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 
-const connectionString = 'mongodb+srv://chankhaishen:C2pHmL6lON7CNXMB@cluster0.kqxxo56.mongodb.net/CityComplaintSystemDatabase';
+require('dotenv').config();
+
+const connectionString = `${process.env.DB_STRING}${process.env.DB_NAME}`;
 
 const connectDatabase = () => {
     mongoose.connect(connectionString).then(()=>{

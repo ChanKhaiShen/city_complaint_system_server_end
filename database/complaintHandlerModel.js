@@ -16,9 +16,7 @@ const complaintHandlerSchema = new mongoose.Schema({
     },
     password: {
         type: String,
-        required: true,
-        trim: true,
-        maxLength: 72
+        trim: true
     },
     name: {
         type: String,
