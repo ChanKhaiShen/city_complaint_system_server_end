@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { type } = require('os');
 
 const complaintSchema = new mongoose.Schema({
     complainantEmail: {
@@ -48,7 +49,7 @@ const complaintSchema = new mongoose.Schema({
     status: {
         type: String,
         required: true,
-        enum: ['Received', 'Cancelled', 'Solved'],
+        enum: ['Received', 'Still in progress', 'Cancelled', 'Solved'],
         default: 'Received'
     },
     complaintHandlerEmail: {
@@ -59,6 +60,19 @@ const complaintSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
+    history: [
+        {
+            status: {
+                type: String,
+                required: true,
+                enum: ['Received', 'Still in progress', 'Cancelled', 'Solved']
+            },
+            changed: {
+                type: Date,
+                default: Date.now
+            }
+        }
+    ],
     created: {
         type: Date,
         default: Date.now

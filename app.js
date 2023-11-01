@@ -19,7 +19,6 @@ const createToken = require('./token/createToken');
 
 // Mailer
 const transporter = require('./mailer/transporter');
-const { result } = require('safe/lib/safe');
 
 const app = express();
 
@@ -30,69 +29,121 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended:true}));
 
-app.post('/registersendotp', (req, res) => {
+app.post('/sendotp/:option', async (req, res) => {
     const emailAddress = req.body.emailAddress;
-    const name = req.body.name;
-    console.log('verify email', emailAddress, name);
+    const option = req.params.option;
+    console.log('send otp', emailAddress, option);
 
     if (emailAddress === undefined) {
-        console.log('verify email: No email');
+        console.log('send otp: No email');
         res.status(400).json({
             message: 'No email'
         });
         return;
     }
 
-    var otp = '';
-        for (var i=0; i<6; i++) {
-            var randomNumber = Math.floor(Math.random() * 10);
-            randomNumber = randomNumber.toString();
-            otp += randomNumber;
-        }
-        console.log('otp', otp);
-
-        const mailOptions = {
-            from: process.env.MAILER_USER,
-            to: emailAddress,
-            subject: 'Email Verification',
-            html: `
-                <p>Hi ${name.trim()},</p>
-                <p/>
-                <p>To verify your email address, please enter the following OTP on the registration page.<p/>
-                <p/>
-                <h4>${otp}</h4>
-                <p/>
-                <p>Regards,</p>
-                <p>City Complaint System</p>
-            `
-        }
-
-        transporter.sendMail(mailOptions, function(error, info) {
-            if (error != null) {
-                console.log('send otp error', error);
-                res.status(500).send();
-                return;
-            }
-
-            console.log('send otp success', info.response);
-
-            const Otp = new otpModel({
-                emailAddress: emailAddress,
-                otp: otp
+    var name;
+    if (option === 'register') {
+        name = req.body.name;
+        if (name === undefined) {
+            console.log('send otp: No name');
+            res.status(400).json({
+                message: 'No name'
             });
+            return;
+        }
+    }
+    else if (option === 'setpassword') {
+        const promise = new Promise((resolve, reject)=>{
+            complainantModel.findOne({emailAddress: emailAddress}).then(result=>{
+                console.log('send otp: find complainant name', result);
+                if (result != null) {
+                    name = result.name;
+                    resolve();
+                    return;
+                }
         
-            Otp.save().then(response=>{
-                console.log('Otp success save', response);
-                res.status(200).json({
-                    message: "OTP was sent to the email"
+                complaintHandlerModel.findOne({emailAddress: emailAddress}).then(response=>{
+                    console.log('send otp: find complaint handler name', response);
+                    if (response != null)
+                        name = response.name;
+                    resolve();
+                }).catch(error=>{
+                    console.log('send otp: find complaint handler name error', error);
+                    resolve();
                 });
-
             }).catch(error=>{
-                console.log('Otp error save', error);
-                res.status(500).send();
+                console.log('send otp: find complainant name error', error);
+                resolve();
             });
         });
-})
+        
+        await promise;
+        
+        if (name == null) {
+            res.status(400).json({
+                message: 'Email address not found'
+            });
+            return;
+        }
+    }
+    else {
+        res.status(400).json({
+            message: 'Not a valid option'
+        });
+        return;
+    }
+
+    var otp = '';
+    for (var i=0; i<6; i++) {
+        var randomNumber = Math.floor(Math.random() * 10);
+        randomNumber = randomNumber.toString();
+        otp += randomNumber;
+    }
+    console.log('otp', otp);
+
+    const mailOptions = {
+        from: process.env.MAILER_USER,
+        to: emailAddress,
+        subject: 'Email Verification',
+        html: `
+            <p>Hi ${name.trim()},</p>
+            <p/>
+            <p>To verify your email address, please enter the following OTP.<p/>
+            <p/>
+            <h4>${otp}</h4>
+            <p/>
+            <p>Regards,</p>
+            <p>City Complaint System</p>
+        `
+    }
+
+    transporter.sendMail(mailOptions, function(error, info) {
+        if (error != null) {
+            console.log('send otp error', error);
+            res.status(500).send();
+            return;
+        }
+
+        console.log('send otp success', info.response);
+
+        const Otp = new otpModel({
+            emailAddress: emailAddress,
+            otp: otp
+        });
+        
+        Otp.save().then(response=>{
+            console.log('Otp success save', response);
+            res.status(200).json({
+                message: "OTP was sent to the email"
+            });
+
+        }).catch(error=>{
+            console.log('Otp error save', error);
+            res.status(500).send();
+        });
+    });
+});
 
 app.post('/register', (req, res) => {
     const emailAddress = req.body.emailAddress;
@@ -130,16 +181,10 @@ app.post('/register', (req, res) => {
             return;
         }
         
-        complainantModel.findOne({emailAddress: emailAddress}).then(result=>{
-            if (result != null){
-                console.log('register: User already exists');
-                res.status(400).json({
-                    message: "User already exists"
-                });
-                return;
-            }
+        otpModel.deleteMany({emailAddress: emailAddress}).then(response=>{  // Otp will be deleted after verified
+            console.log('register: delete otp', response);
 
-            complaintHandlerModel.findOne({emailAddress: emailAddress}).then(result=>{
+            complainantModel.findOne({emailAddress: emailAddress}).then(result=>{
                 if (result != null){
                     console.log('register: User already exists');
                     res.status(400).json({
@@ -147,38 +192,143 @@ app.post('/register', (req, res) => {
                     });
                     return;
                 }
-
-                const complainant = new complainantModel({
-                    emailAddress: emailAddress,
-                    password: password,
-                    name: name,
-                    IC_Number: IC_Number,
-                    mobilePhoneNumber: mobilePhoneNumber,
-                    homeAddress: homeAddress,
-                    faxNumber: faxNumber
-                });
-                
-                complainant.save().then(response=>{
-                    console.log('Register success save', response);
-                    res.status(200).json({
-                        message: "Registered"
+    
+                complaintHandlerModel.findOne({emailAddress: emailAddress}).then(result=>{
+                    if (result != null){
+                        console.log('register: User already exists');
+                        res.status(400).json({
+                            message: "User already exists"
+                        });
+                        return;
+                    }
+    
+                    const complainant = new complainantModel({
+                        emailAddress: emailAddress,
+                        password: password,
+                        name: name,
+                        IC_Number: IC_Number,
+                        mobilePhoneNumber: mobilePhoneNumber,
+                        homeAddress: homeAddress,
+                        faxNumber: faxNumber
                     });
-        
+                    
+                    complainant.save().then(response=>{
+                        console.log('Register success save', response);
+                        res.status(200).json({
+                            message: "Registered"
+                        });
+            
+                    }).catch(error=>{
+                        console.log('register error save', error);
+                        res.status(500).send();
+                    });
                 }).catch(error=>{
-                    console.log('register error save', error);
+                    console.log('register error check complaint handler', error);
                     res.status(500).send();
                 });
             }).catch(error=>{
-                console.log('register error check', error);
+                console.log('register error check complainant', error);
                 res.status(500).send();
             });
         }).catch(error=>{
-            console.log('register error check', error);
+            console.log('register error delete otp', error);
             res.status(500).send();
         });
 
     }).catch(error=>{
         console.log('register error check otp', error);
+        res.status(500).send();
+    });
+});
+
+app.post('/setpassword', (req, res)=>{
+    const emailAddress = req.body.emailAddress;
+    const password = req.body.password;
+    const otp = req.body.otp;
+
+    console.log('set password', emailAddress, password, otp);
+
+    if (emailAddress === undefined || password === undefined || otp === undefined) {
+        console.log('set password: Mandatory field missing');
+        res.status(400).json({
+            message: "Some mandatory field is missing"
+        });
+        return;
+    }
+
+    otpModel.find({emailAddress: emailAddress}).sort({'created': 'descending'}).then(result=>{
+        if (result == null){
+            console.log('set password: No otp');
+            res.status(400).json({
+                message: "Email verification fail"
+            });
+            return;
+        }
+
+        if (otp !== result[0].otp) {
+            console.log('set password: wrong otp');
+            res.status(400).json({
+                message: "Email verification fail"
+            });
+            return;
+        }
+        
+        otpModel.deleteMany({emailAddress: emailAddress}).then(response=>{
+            console.log('set password: delete otp', response);
+
+            complainantModel.findOne({emailAddress: emailAddress}).then(result=>{
+                if (result != null){
+                    console.log('set password: Complainant found');
+
+                    complainantModel.updateOne({emailAddress: emailAddress}, {password: password}).then(result=>{
+                        console.log('set complainant password', result);
+                        res.status(200).json({
+                            message: "Set password done"
+                        });
+                    }).catch(error=>{
+                        console.log('set complainant password error', error);
+                        res.status(500).send();
+                    });
+
+                    return;
+                }
+    
+                console.log('set password: Complainant not found');
+                complaintHandlerModel.findOne({emailAddress: emailAddress}).then(result=>{
+                    if (result === null){
+                        console.log('set password: User not exist');
+                        res.status(400).json({
+                            message: "User not exist"
+                        });
+                        return;
+                    }
+
+                    console.log('set password: Complaint handler found');
+                    complaintHandlerModel.updateOne({emailAddress: emailAddress}, {password: password}).then(response=>{
+                        console.log('set complaint handler password', result);
+                        res.status(200).json({
+                            message: "Set password done"
+                        });
+                    }).catch(error=>{
+                        console.log('set complaint handler password error', error);
+                        res.status(500).send();
+                    });
+
+                }).catch(error=>{
+                    console.log('set password error check complaint handler', error);
+                    res.status(500).send();
+                });
+            }).catch(error=>{
+                console.log('set password error check complainant', error);
+                res.status(500).send();
+            });
+        }).catch(error=>{
+            console.log('set password error delete otp', error);
+            res.status(500).send();
+        });
+
+    }).catch(error=>{
+        console.log('set password error check otp', error);
         res.status(500).send();
     });
 });
@@ -256,7 +406,7 @@ app.post('/login', (req, res)=>{
     }).catch(error=>{
         console.log('Login error: find complainant', error);
         res.status(500).send();
-    })
+    });
 });
 
 app.get('/verifytoken', verifyToken, (req, res)=>{   // The purpose is for the front end program to check whether the token stored is expired or not
@@ -553,7 +703,7 @@ app.post('/lodgecomplaint', verifyToken, (req, res)=>{
             to: emailAddress,
             subject: `Complaint Received (${response._id})`,
             html: `
-                <p>Hi ${name},</p>
+                <p>Hi ${name.trim()},</p>
                 <p/>
                 <p>Your complaint has beed received. The following are the details of the complaint case that we received.<p/>
                 <p/>
@@ -561,7 +711,7 @@ app.post('/lodgecomplaint', verifyToken, (req, res)=>{
                     <h3>Title: ${response.title}</h3>
                     <p>Case ID: ${response._id}</p>
                     <p>Status: ${response.status}</p>
-                    <p>Date: ${(new Date(response.created)).toDateString()}</p>
+                    <p>Date: ${(new Date(response.created)).toLocaleDateString()}</p>
                     <p/>
                     <h3>Details:</h3>
                     <p>Category: ${response.category}</p>
@@ -588,7 +738,7 @@ app.post('/lodgecomplaint', verifyToken, (req, res)=>{
                     title: response.title,
                     caseId: response._id,
                     status: response.status,
-                    date: (new Date(response.created)).toDateString(),
+                    date: (new Date(response.created)).toLocaleDateString(),
                     category: response.category,
                     description: response.description,
                     expectedResult: response.expectedResult == null || response.expectedResult === '' ? 'Not Available' : response.expectedResult,
@@ -601,6 +751,183 @@ app.post('/lodgecomplaint', verifyToken, (req, res)=>{
         console.log('complaint error save', error);
         res.status(500).send();
     });
+});
+
+app.get('/allcomplaints', verifyToken, (req, res)=>{
+    const user = req.user;
+    const startDate = req.query.startdate;
+    const endDate = req.query.enddate;
+    console.log('get all complaints', user);
+
+    if (user.role === 'complainant') {
+        console.log('get complaint for complainant', user.emailAddress);
+
+        complaintModel.find({
+            complainantEmail: user.emailAddress,
+            created: {
+                $gte: startDate == null ? new Date('2023-01-01T00:00:00+08:00') : new Date(startDate + 'T00:00:00+08:00'),  // 2023-01-01 is a date when this system is not yet running
+                $lte: endDate == null ? Date.now() : new Date(endDate + 'T23:59:59+08:00')
+            }
+        }).then(results=>{
+            console.log('find complaint', results);
+
+            const complaints = [];
+            for (var i=0; i<results.length; i++) {
+                complaints.push({
+                    id: results[i]._id,
+                    // Complaint details
+                    title: results[i].title,
+                    caseId: results[i]._id,
+                    status: results[i].status,
+                    created: results[i].created,
+                    category: results[i].category,
+                    description: results[i].description,
+                    expectedResult: results[i].expectedResult == null || results[i].expectedResult === '' ? 'Not Available' : results[i].expectedResult,
+                    area: results[i].area,
+                    incidentAddress: results[i].incidentAddress == null || results[i].incidentAddress === '' ? 'Not Available' : results[i].incidentAddress,
+                    // Other details
+                    history: results[i].history
+                });
+            }
+
+            res.status(200).json({
+                complaints: complaints
+            });
+
+        }).catch(error=>{
+            console.log('find complaint error', error);
+            res.status(500).send();
+        });
+    }
+    else if (user.role === 'complaint handler') {
+        console.log('get complaint for complaint handler', user.emailAddress);
+
+        complaintModel.aggregate([
+            {
+                $match: {
+                    created: {
+                        $gte: startDate == null ? new Date('2023-01-01T00:00:00+08:00') : new Date(startDate + 'T00:00:00+08:00'),
+                        $lte: endDate == null ? Date.now : new Date(endDate + 'T23:59:59+08:00')
+                    },
+                    $or: [
+                        {
+                            complaintHandlerEmail: user.emailAddress
+                        },
+                        {
+                            status: 'Received'
+                        }
+                    ]
+                }
+            },
+            {
+                $lookup: {
+                    from: 'complainants',
+                    localField: 'complainantEmail',
+                    foreignField: 'emailAddress',
+                    as: 'complainant'
+                }
+            }
+        ]).then(results=>{
+            console.log('find complaint', results);
+        
+            const complaints = [];
+            for (var i=0; i<results.length; i++) {
+                complaints.push({
+                    id: results[i]._id,
+                    // Complaint details
+                    title: results[i].title,
+                    caseId: results[i]._id,
+                    status: results[i].status,
+                    created: results[i].created,
+                    category: results[i].category,
+                    description: results[i].description,
+                    expectedResult: results[i].expectedResult == null || results[i].expectedResult === '' ? 'Not Available' : results[i].expectedResult,
+                    area: results[i].area,
+                    incidentAddress: results[i].incidentAddress == null || results[i].incidentAddress === '' ? 'Not Available' : results[i].incidentAddress,
+                    // Complainant details
+                    emailAddress: results[i].complainantEmail,
+                    name: results[i].complainant[0].name,
+                    IC_Number: results[i].complainant[0].IC_Number,
+                    mobilePhoneNumber: results[i].complainant[0].mobilePhoneNumber,
+                    homeAddress: results[i].complainant[0].homeAddress == null || results[i].complainant[0].homeAddress === '' ? 'Not Available' : results[i].complainant[0].homeAddress,
+                    faxNumber: results[i].complainant[0].faxNumber == null || results[i].complainant[0].faxNumber === '' ? 'Not Available' : results[i].complainant[0].faxNumber,
+                    // Other details
+                    history: results[i].history == null ? [] : results[i].history,
+                    complaintHandlerEmail: results[i].complaintHandlerEmail == null || results[i].complaintHandlerEmail === '' ? 'Not Available' : results[i].complaintHandlerEmail,
+                    complaintHandlerName: results[i].complaintHandlerName == null || results[i].complaintHandlerEmail === '' ? 'Not Available' : results[i].complaintHandlerName
+                });
+            }
+
+            res.status(200).json({
+                complaints: complaints
+            });
+        
+        }).catch(error=>{
+            console.log('find complaint error', error);
+            res.status(500).send();
+        });
+    }
+    else if (user.role === 'administrator') {
+        console.log('get complaint for administrator', user.emailAddress);
+
+        complaintModel.aggregate([
+            {
+                $match: {
+                    created: {
+                        $gte: startDate == null ? new Date('2023-01-01T00:00:00+08:00') : new Date(startDate + 'T00:00:00+08:00'),
+                        $lte: endDate == null ? Date.now : new Date(endDate + 'T23:59:59+08:00')
+                    }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'complainants',
+                    localField: 'complainantEmail',
+                    foreignField: 'emailAddress',
+                    as: 'complainant'
+                }
+            }
+        ]).then(results=>{
+            console.log('find complaint', results);
+        
+            const complaints = [];
+            for (var i=0; i<results.length; i++) {
+                console.log(results[i], results[i].complainant, results[i].complainant[0].name);
+                complaints.push({
+                    id: results[i]._id,
+                    // Complaint details
+                    title: results[i].title,
+                    caseId: results[i]._id,
+                    status: results[i].status,
+                    created: results[i].created,
+                    category: results[i].category,
+                    description: results[i].description,
+                    expectedResult: results[i].expectedResult == null || results[i].expectedResult === '' ? 'Not Available' : results[i].expectedResult,
+                    area: results[i].area,
+                    incidentAddress: results[i].incidentAddress == null || results[i].incidentAddress === '' ? 'Not Available' : results[i].incidentAddress,
+                    // Complainant details
+                    emailAddress: results[i].complainantEmail,
+                    name: results[i].complainant[0].name,
+                    IC_Number: results[i].complainant[0].IC_Number,
+                    mobilePhoneNumber: results[i].complainant[0].mobilePhoneNumber,
+                    homeAddress: results[i].complainant[0].homeAddress == null || results[i].complainant[0].homeAddress === '' ? 'Not Available' : results[i].complainant[0].homeAddress,
+                    faxNumber: results[i].complainant[0].faxNumber == null || results[i].complainant[0].faxNumber === '' ? 'Not Available' : results[i].complainant[0].faxNumber,
+                    // Other details
+                    history: results[i].history == null ? [] : results[i].history,
+                    complaintHandlerEmail: results[i].complaintHandlerEmail == null || results[i].complaintHandlerEmail === '' ? 'Not Available' : results[i].complaintHandlerEmail,
+                    complaintHandlerName: results[i].complaintHandlerName == null || results[i].complaintHandlerEmail === '' ? 'Not Available' : results[i].complaintHandlerName
+                });
+            }
+
+            res.status(200).json({
+                complaints: complaints
+            });
+        
+        }).catch(error=>{
+            console.log('find complaint error', error);
+            res.status(500).send();
+        });
+    }
 });
 
 app.get('/allcomplainthandlers', verifyToken, (req, res)=>{
@@ -688,7 +1015,7 @@ app.post('/addcomplainthandler', verifyToken, (req, res)=>{
                 to: emailAddress,
                 subject: 'Complaint Handler Registration',
                 html: `
-                    <p>Hi ${name}, </p>
+                    <p>Hi ${name.trim()}, </p>
                     <p>To complete the registration as complaint handler, please click this <a href="http://localhost:${process.env.REACT_PORT}/setpassword">link</a> to set your password.</p>
                     <p/>
                     <p>Regards,</p>
@@ -754,7 +1081,7 @@ app.delete('/deletecomplainthandler', verifyToken, (req, res)=>{
         return;
     }
 
-    complaintModel.findOne({complainantEmail: emailAddress, status: 'Received'}).then(result=>{
+    complaintModel.findOne({complainantEmail: emailAddress, status: 'Still in progress'}).then(result=>{
         console.log('find not settled complaint', result);
         
         if (result != null) {
@@ -796,7 +1123,7 @@ app.get('/complaintcount', verifyToken, (req, res) => {
     try {
         if (groupBy != null) {
             groupBy = groupBy.trim().toLowerCase();
-            if (!(groupBy === 'area' || groupBy === 'category')) 
+            if (!(groupBy === 'area' || groupBy === 'category' || groupBy === 'status')) 
                 throw 'Not a valid group by';
         }
 
