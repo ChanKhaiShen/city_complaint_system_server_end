@@ -18,6 +18,10 @@ const complaintHandlerSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
+    salt: {
+        type: String,
+        trim: true
+    },
     name: {
         type: String,
         required: true,

@@ -16,8 +16,13 @@ const complainantSchema = new mongoose.Schema({
     },
     password: {
         type: String,
-        required: true,
-        trim: true
+        trim: true,
+        required: true
+    },
+    salt: {
+        type: String,
+        trim: true,
+        required: true
     },
     name: {
         type: String,
