@@ -30,8 +30,6 @@ const complaintHandlerSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        required: true,
-        maxLength: 20,
         enum: ['complaint handler', 'administrator'],
         default: 'complaint handler'
     },

@@ -20,8 +20,6 @@ const createToken = require('./token/createToken');
 
 // Mailer
 const transporter = require('./mailer/transporter');
-const { default: mongoose } = require('mongoose');
-const { result } = require('safe/lib/safe');
 
 const app = express();
 
@@ -453,7 +451,7 @@ app.post('/login', (req, res)=>{
                 }
 
                 const hashedPassword = derivedKey.toString('base64');
-                
+
                 if (hashedPassword !== result.password) {
                     console.log('Login: Wrong password');
                     res.status(401).json({
@@ -823,7 +821,7 @@ app.post('/lodgecomplaint', verifyToken, (req, res)=>{
                     title: response.title,
                     caseId: response._id,
                     status: response.status,
-                    date: (new Date(response.created)).toLocaleDateString(),
+                    created: response.created,
                     category: response.category,
                     description: response.description,
                     expectedResult: response.expectedResult == null || response.expectedResult === '' ? 'Not Available' : response.expectedResult,
@@ -935,23 +933,29 @@ app.get('/allcomplaints', verifyToken, (req, res)=>{
         complaintModel.aggregate([
             {
                 $match: {
-                    $or: [
+                    $and: [
                         {
-                            created: {
-                                $gte: startDate == null ? new Date('2023-01-01T00:00:00+08:00') : new Date(startDate + 'T00:00:00+08:00'),
-                                $lte: endDate == null ? Date.now : new Date(endDate + 'T23:59:59+08:00')
-                            },
+                            $or: [
+                                {
+                                    created: {
+                                        $gte: startDate == null ? new Date('2023-01-01T00:00:00+08:00') : new Date(startDate + 'T00:00:00+08:00'),
+                                        $lte: endDate == null ? Date.now : new Date(endDate + 'T23:59:59+08:00')
+                                    },
+                                },
+                                {
+                                    title: searchWord == null ? '' : searchWord
+                                }
+                            ]
                         },
                         {
-                            title: searchWord == null ? '' : searchWord
-                        }
-                    ],
-                    $or: [
-                        {
-                            complaintHandlerEmail: user.emailAddress
-                        },
-                        {
-                            status: 'Received'
+                            $or: [
+                                {
+                                    complaintHandlerEmail: user.emailAddress
+                                },
+                                {
+                                    complaintHandlerEmail: '' || null
+                                }
+                            ]
                         }
                     ]
                 }
